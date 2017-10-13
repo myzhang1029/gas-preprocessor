@@ -269,7 +269,7 @@ while (<INPUT>) {
     # the line indicates a comment for all supported archs (aarch64, arm, ppc
     # and x86). Also strips line number comments but since they are off anyway
     # it is no loss.
-    s/^#.*$//;
+    s/^\s*#.*$//;
     # remove all comments (to avoid interfering with evaluating directives)
     s/(?<!\\)$inputcomm.*//x;
     # Strip out windows linefeeds
