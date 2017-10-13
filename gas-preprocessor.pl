@@ -249,7 +249,7 @@ my $thumb = 0;
 
 my %thumb_labels;
 my %call_targets;
-my %mov32_targets;
+my %import_symbols;
 
 my %neon_alias_reg;
 my %neon_alias_type;
@@ -630,6 +630,14 @@ sub is_arm_register {
     return 0;
 }
 
+sub is_aarch64_register {
+    my $name = $_[0];
+    if ($name =~ /^[xw]\d+$/) {
+        return 1;
+    }
+    return 0;
+}
+
 sub handle_local_label {
     my $line = $_[0];
     my $num  = $_[1];
@@ -681,9 +689,9 @@ sub handle_serialized_line {
     }
 
     # handle GNU as pc-relative relocations for adrp/add
-    if ($line =~ /(.*)\s*adrp([\w\s\d]+)\s*,\s*#?:pg_hi21:([^\s]+)/) {
+    if ($line =~ /(.*)\s*adrp([\w\s\d]+)\s*,\s*#?:pg_hi21:([^\s]+)/ and $as_type =~ /^apple-/) {
         $line = "$1 adrp$2, ${3}\@PAGE\n";
-    } elsif ($line =~ /(.*)\s*add([\w\s\d]+)\s*,([\w\s\d]+)\s*,\s*#?:lo12:([^\s]+)/) {
+    } elsif ($line =~ /(.*)\s*add([\w\s\d]+)\s*,([\w\s\d]+)\s*,\s*#?:lo12:([^\s]+)/ and $as_type =~ /^apple-/) {
         $line = "$1 add$2, $3, ${4}\@PAGEOFF\n";
     }
 
@@ -801,8 +809,8 @@ sub handle_serialized_line {
         if ($line =~ /^\s*(s|u)xtl(2)?\s+(v[0-3]?\d\.[248][hsdHSD])\s*,\s*(v[0-3]?\d\.(?:2|4|8|16)[bhsBHS])\b\s*$/) {
             $line = "        $1shll$2 $3, $4, #0\n";
         }
-        # clang 3.4 does not automatically use shifted immediates in add/sub
-        if ($as_type eq "clang" and
+        # clang 3.4 and armasm64 do not automatically use shifted immediates in add/sub
+        if (($as_type eq "clang" or $as_type eq "armasm") and
             $line =~ /^(\s*(?:add|sub)s?) ([^#l]+)#([\d\+\-\*\/ <>]+)\s*$/) {
             my $imm = eval $3;
             if ($imm > 4095 and not ($imm & 4095)) {
@@ -870,7 +878,7 @@ sub handle_serialized_line {
 
 
         # Check branch instructions
-        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?(..)?(\.w)?)\s+(\w+)/) {
+        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?\.?(..)?(\.w)?)\s+(\w+)/) {
             my $instr = $2;
             my $cond = $3;
             my $width = $4;
@@ -881,9 +889,28 @@ sub handle_serialized_line {
             } elsif ($target =~ /^(\d+)([bf])$/) {
                 # The target is a local label
                 $line = handle_local_label($line, $1, $2);
-                $line =~ s/\b$instr\b/$&.w/ if $width eq "";
-            } elsif (!is_arm_register($target)) {
+                $line =~ s/\b$instr\b/$&.w/ if $width eq "" and $arch eq "arm";
+            } elsif (($arch eq "arm" and !is_arm_register($target)) or
+                     ($arch eq "aarch64" and !is_aarch64_register($target))) {
                 $call_targets{$target}++;
+            }
+        } elsif ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(cbn?z|adr|tbz)\s+(\w+)\s*,(\s*#\d+\s*,)?\s*(\w+)/) {
+            my $instr = $2;
+            my $reg = $3;
+            my $bit = $4;
+            my $target = $5;
+            if ($target =~ /^(\d+)([bf])$/) {
+                # The target is a local label
+                $line = handle_local_label($line, $1, $2);
+            } else {
+                $call_targets{$target}++;
+            }
+            # Convert tbz with a wX register into an xX register,
+            # due to armasm64 bugs/limitations.
+            if ($instr eq "tbz" and $reg =~ /w\d+/) {
+                my $xreg = $reg;
+                $xreg =~ s/w/x/;
+                $line =~ s/\b$reg\b/$xreg/;
             }
         } elsif ($line =~ /^\s*.h?word.*\b\d+[bf]\b/) {
             while ($line =~ /\b(\d+)([bf])\b/g) {
@@ -922,19 +949,81 @@ sub handle_serialized_line {
             $line =~ s/\(\s*(\d+)\s*([<>])\s*(\d+)\s*\)/$val/;
         }
 
-        # Change a movw... #:lower16: into a mov32 pseudoinstruction
-        $line =~ s/^(\s*)movw(\s+\w+\s*,\s*)\#:lower16:(.*)$/$1mov32$2$3/;
-        # and remove the following, matching movt completely
-        $line =~ s/^\s*movt\s+\w+\s*,\s*\#:upper16:.*$//;
+        if ($arch eq "arm") {
+            # Change a movw... #:lower16: into a mov32 pseudoinstruction
+            $line =~ s/^(\s*)movw(\s+\w+\s*,\s*)\#:lower16:(.*)$/$1mov32$2$3/;
+            # and remove the following, matching movt completely
+            $line =~ s/^\s*movt\s+\w+\s*,\s*\#:upper16:.*$//;
 
-        if ($line =~ /^\s*mov32\s+\w+,\s*([a-zA-Z]\w*)/) {
-            $mov32_targets{$1}++;
+            if ($line =~ /^\s*mov32\s+\w+,\s*([a-zA-Z]\w*)/) {
+                $import_symbols{$1}++;
+            }
+
+            # Misc bugs/deficiencies:
+            # armasm seems unable to parse e.g. "vmov s0, s1" without a type
+            # qualifier, thus add .f32.
+            $line =~ s/^(\s+(?:vmov|vadd))(\s+s\d+\s*,\s*s\d+)/$1.f32$2/;
+        } elsif ($arch eq "aarch64") {
+            # Convert ext into ext8; armasm64 seems to require it named as ext8.
+            $line =~ s/^(\s+)ext(\s+)/$1ext8$2/;
+
+            # Pick up targets from ldr x0, =sym+offset
+            if ($line =~ /^\s*ldr\s+(\w+)\s*,\s*=([a-zA-Z]\w*)(.*)$/) {
+                my $reg = $1;
+                my $sym = $2;
+                my $offset = eval_expr($3);
+                if ($offset < 0) {
+                    # armasm64 is buggy with ldr x0, =sym+offset where the
+                    # offset is a negative value; it does write a negative
+                    # offset into the literal pool as it should, but the
+                    # negative offset only covers the lower 32 bit of the 64
+                    # bit literal/relocation.
+                    # Thus remove the offset and apply it manually with a sub
+                    # afterwards.
+                    $offset = -$offset;
+                    $line = "\tldr $reg, =$sym\n\tsub $reg, $reg, #$offset\n";
+                }
+                $import_symbols{$sym}++;
+            }
+
+            # armasm64 (currently) doesn't support offsets on adrp targets,
+            # even though the COFF format relocations (and the linker)
+            # supports it. Therefore strip out the offsets from adrp and
+            # add :lo12: (in case future armasm64 would start handling it)
+            # and add an extra explicit add instruction for the offset.
+            if ($line =~ s/(adrp\s+\w+\s*,\s*(\w+))([\d\+\-\*\/\(\) <>]+)?/\1/) {
+                $import_symbols{$2}++;
+            }
+            if ($line =~ s/(add\s+(\w+)\s*,\s*\w+\s*,\s*):lo12:(\w+)([\d\+\-\*\/\(\) <>]+)?/\1\3/) {
+                my $reg = $2;
+                my $sym = $3;
+                my $offset = eval_expr($4);
+                $line .= "\tadd $reg, $reg, #$offset\n" if $offset > 0;
+                $import_symbols{$sym}++;
+            }
+
+            # Convert e.g. "add x0, x0, w0, uxtw" into "add x0, x0, w0, uxtw #0",
+            # or "ldr x0, [x0, w0, uxtw]" into "ldr x0, [x0, w0, uxtw #0]".
+            $line =~ s/(uxtw|sxtw)(\s*\]?\s*)$/\1 #0\2/i;
+
+            # Convert "mov x0, v0.d[0]" into "umov x0, v0.d[0]"
+            $line =~ s/\bmov\s+[xw]\d+\s*,\s*v\d+\.[ds]/u$&/i;
+
+            # Convert "ccmp w0, #0, #0, ne" into "ccmpne w0, #0, #0",
+            # and "csel w0, w0, w0, ne" into "cselne w0, w0, w0".
+            $line =~ s/(ccmp|csel)\s+([xw]\w+)\s*,\s*([xw#]\w+)\s*,\s*([xw#]\w+)\s*,\s*($arm_cond_codes)/\1\5 \2, \3, \4/;
+
+            # Convert "cinc w0, w0, ne" into "cincne w0, w0".
+            $line =~ s/(cinc)\s+([xw]\w+)\s*,\s*([xw]\w+)\s*,\s*($arm_cond_codes)/\1\4 \2, \3/;
+
+            # Convert "cset w0, lo" into "csetlo w0"
+            $line =~ s/(cset)\s+([xw]\w+)\s*,\s*($arm_cond_codes)/\1\3 \2/;
+
+            # Strip out prfum; armasm64 fails to assemble any
+            # variant/combination of prfum tested so far, but it can be
+            # left out without any
+            $line =~ s/prfum.*\]//;
         }
-
-        # Misc bugs/deficiencies:
-        # armasm seems unable to parse e.g. "vmov s0, s1" without a type
-        # qualifier, thus add .f32.
-        $line =~ s/^(\s+(?:vmov|vadd))(\s+s\d+\s*,\s*s\d+)/$1.f32$2/;
         # armasm is unable to parse &0x - add spacing
         $line =~ s/&0x/& 0x/g;
     }
@@ -1017,10 +1106,15 @@ sub handle_serialized_line {
         $line =~ s/\.text/AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN/;
         $line =~ s/(\s*)(.*)\.rodata/$1AREA |.rodata|, DATA, READONLY, ALIGN=5/;
         $line =~ s/\.data/AREA |.data|, DATA, ALIGN=5/;
-
+    }
+    if ($as_type eq "armasm" and $arch eq "arm") {
         $line =~ s/fmxr/vmsr/;
         $line =~ s/fmrx/vmrs/;
         $line =~ s/fadds/vadd.f32/;
+    }
+    if ($as_type eq "armasm" and $arch eq "aarch64") {
+        # Convert "b.eq" into "beq"
+        $line =~ s/\bb\.($arm_cond_codes)\b/b\1/;
     }
 
     # catch unknown section names that aren't mach-o style (with a comma)
@@ -1042,7 +1136,7 @@ if ($as_type ne "armasm") {
         grep exists $thumb_labels{$_}, keys %call_targets;
 } else {
     map print(ASMFILE "\tIMPORT $_\n"),
-        grep ! exists $labels_seen{$_}, (keys %call_targets, keys %mov32_targets);
+        grep ! exists $labels_seen{$_}, (keys %call_targets, keys %import_symbols);
 
     print ASMFILE "\tEND\n";
 }
