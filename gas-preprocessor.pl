@@ -704,7 +704,7 @@ sub handle_serialized_line {
         my $cond = $3;
         my $label = $4;
         # Don't interpret e.g. bic as b<cc> with ic as conditional code
-        if ($cond =~ /|$arm_cond_codes/) {
+        if ($cond =~ /^(|$arm_cond_codes)$/) {
             if (exists $thumb_labels{$label}) {
                 print ASMFILE ".thumb_func $label\n";
             } else {
@@ -871,7 +871,7 @@ sub handle_serialized_line {
             my $width = $4;
             my $target = $5;
             # Don't interpret e.g. bic as b<cc> with ic as conditional code
-            if ($cond !~ /|$arm_cond_codes/) {
+            if ($cond !~ /^(|$arm_cond_codes)$/) {
                 # Not actually a branch
             } elsif ($target =~ /^(\d+)([bf])$/) {
                 # The target is a local label
