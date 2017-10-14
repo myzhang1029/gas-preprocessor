@@ -943,7 +943,7 @@ sub handle_serialized_line {
         # Convert "mov pc, lr" into "bx lr", since the former only works
         # for switching from arm to thumb (and only in armv7), but not
         # from thumb to arm.
-        s/mov\s*pc\s*,\s*lr/bx lr/g;
+        $line =~ s/mov\s*pc\s*,\s*lr/bx lr/g;
 
         # Convert stmdb/ldmia/stmfd/ldmfd/ldm with only one register into a plain str/ldr with post-increment/decrement.
         # Wide thumb2 encoding requires at least two registers in register list while all other encodings support one register too.
