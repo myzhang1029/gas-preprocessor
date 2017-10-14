@@ -98,6 +98,11 @@ if ($as_type eq "armasm") {
 
     $preprocess_c_cmd[0] = "cpp";
     push(@preprocess_c_cmd, "-undef");
+    # Normally a preprocessor for windows would predefine _WIN32,
+    # but we're using any generic system-agnostic preprocessor "cpp"
+    # with -undef (to avoid getting predefined variables from the host
+    # system in cross compilation cases), so manually define it here.
+    push(@preprocess_c_cmd, "-D_WIN32");
 
     @preprocess_c_cmd = grep ! /^-nologo$/, @preprocess_c_cmd;
     # Remove -ignore XX parameter pairs from preprocess_c_cmd
