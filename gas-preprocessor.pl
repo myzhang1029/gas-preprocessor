@@ -857,7 +857,7 @@ sub handle_serialized_line {
             $last_temp_labels{$num} = $name;
         }
 
-        if ($line =~ s/^(\w+):/$1/) {
+        if ($line =~ s/^\s*(\w+):/$1/) {
             # Skip labels that have already been declared with a PROC,
             # labels must not be declared multiple times.
             return if (defined $labels_seen{$1});
