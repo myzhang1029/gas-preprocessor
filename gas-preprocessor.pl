@@ -797,24 +797,25 @@ sub handle_serialized_line {
     if ($arch eq "aarch64") {
         # fix missing aarch64 instructions in Xcode 5.1 (beta3)
         # mov with vector arguments is not supported, use alias orr instead
-        if ($line =~ /^\s*mov\s+(v\d[\.{}\[\]\w]+),\s*(v\d[\.{}\[\]\w]+)\b\s*$/) {
-            $line = "        orr $1, $2, $2\n";
+        if ($line =~ /^(\d+:)?\s*mov\s+(v\d[\.{}\[\]\w]+),\s*(v\d[\.{}\[\]\w]+)\b\s*$/) {
+            $line = "$1        orr $2, $3, $3\n";
         }
         # movi 16, 32 bit shifted variant, shift is optional
-        if ($line =~ /^\s*movi\s+(v[0-3]?\d\.(?:2|4|8)[hsHS])\s*,\s*(#\w+)\b\s*$/) {
-            $line = "        movi $1, $2, lsl #0\n";
+        if ($line =~ /^(\d+:)?\s*movi\s+(v[0-3]?\d\.(?:2|4|8)[hsHS])\s*,\s*(#\w+)\b\s*$/) {
+            $line = "$1        movi $2, $3, lsl #0\n";
         }
         # Xcode 5 misses the alias uxtl. Replace it with the more general ushll.
         # Clang 3.4 misses the alias sxtl too. Replace it with the more general sshll.
-        if ($line =~ /^\s*(s|u)xtl(2)?\s+(v[0-3]?\d\.[248][hsdHSD])\s*,\s*(v[0-3]?\d\.(?:2|4|8|16)[bhsBHS])\b\s*$/) {
-            $line = "        $1shll$2 $3, $4, #0\n";
+        # armasm64 also misses these instructions.
+        if ($line =~ /^(\d+:)?\s*(s|u)xtl(2)?\s+(v[0-3]?\d\.[248][hsdHSD])\s*,\s*(v[0-3]?\d\.(?:2|4|8|16)[bhsBHS])\b\s*$/) {
+            $line = "$1        $2shll$3 $4, $5, #0\n";
         }
         # clang 3.4 and armasm64 do not automatically use shifted immediates in add/sub
         if (($as_type eq "clang" or $as_type eq "armasm") and
-            $line =~ /^(\s*(?:add|sub)s?) ([^#l]+)#([\d\+\-\*\/ <>]+)\s*$/) {
-            my $imm = eval $3;
+            $line =~ /^(\d+:)?(\s*(?:add|sub)s?) ([^#l]+)#([\d\+\-\*\/ <>]+)\s*$/) {
+            my $imm = eval $4;
             if ($imm > 4095 and not ($imm & 4095)) {
-                $line = "$1 $2#" . ($imm >> 12) . ", lsl #12\n";
+                $line = "$1 $2 $3#" . ($imm >> 12) . ", lsl #12\n";
             }
         }
         if ($ENV{GASPP_FIX_XCODE5}) {
