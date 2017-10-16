@@ -1037,6 +1037,18 @@ sub handle_serialized_line {
                 $line =~ s/$instr$suffix/${instr}u$suffix/;
               }
             }
+
+            if ($ENV{GASPP_ARMASM64_INVERT_SCALE}) {
+                # Instructions like fcvtzs and scvtf store the scale value
+                # inverted in the opcode (stored as 64 - scale), but armasm64
+                # in early versions stores it as-is. Thus convert from
+                # "fcvtzs w0, s0, #8" into "fcvtzs w0, s0, #56".
+                if ($line =~ /(?:fcvtzs|scvtf)\s+(\w+)\s*,\s*(\w+)\s*,\s*#(\d+)/) {
+                    my $scale = $3;
+                    my $inverted_scale = 64 - $3;
+                    $line =~ s/#$scale/#$inverted_scale/;
+                }
+            }
         }
         # armasm is unable to parse &0x - add spacing
         $line =~ s/&0x/& 0x/g;
