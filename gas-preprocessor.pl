@@ -1024,6 +1024,19 @@ sub handle_serialized_line {
             # variant/combination of prfum tested so far, but it can be
             # left out without any
             $line =~ s/prfum.*\]//;
+
+            # Convert "ldrb w0, [x0, #-1]" into "ldurb w0, [x0, #-1]".
+            # Don't do this for forms with writeback though.
+            if ($line =~ /(ld|st)(r[bh]?)\s+(\w+)\s*,\s*\[\s*(\w+)\s*,\s*#([^\]]+)\s*\][^!]/) {
+              my $instr = $1;
+              my $suffix = $2;
+              my $target = $3;
+              my $base = $4;
+              my $offset = eval_expr($5);
+              if ($offset < 0) {
+                $line =~ s/$instr$suffix/${instr}u$suffix/;
+              }
+            }
         }
         # armasm is unable to parse &0x - add spacing
         $line =~ s/&0x/& 0x/g;
