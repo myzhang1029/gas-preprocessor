@@ -1020,10 +1020,13 @@ sub handle_serialized_line {
             # Convert "cset w0, lo" into "csetlo w0"
             $line =~ s/(cset)\s+([xw]\w+)\s*,\s*($arm_cond_codes)/\1\3 \2/;
 
-            # Strip out prfum; armasm64 fails to assemble any
-            # variant/combination of prfum tested so far, but it can be
-            # left out without any
-            $line =~ s/prfum.*\]//;
+            if ($ENV{GASPP_ARMASM64_SKIP_PRFUM}) {
+                # Strip out prfum; armasm64 (VS < 15.5) fails to assemble any
+                # variant/combination of prfum tested so far, but since it is
+                # a prefetch instruction it can be skipped without changing
+                # results.
+                $line =~ s/prfum.*\]//;
+            }
 
             # Convert "ldrb w0, [x0, #-1]" into "ldurb w0, [x0, #-1]".
             # Don't do this for forms with writeback though.
