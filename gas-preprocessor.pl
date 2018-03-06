@@ -973,8 +973,8 @@ sub handle_serialized_line {
                 my $reg = $1;
                 my $sym = $2;
                 my $offset = eval_expr($3);
-                if ($offset < 0) {
-                    # armasm64 is buggy with ldr x0, =sym+offset where the
+                if ($offset < 0 and $ENV{GASPP_ARMASM64_SKIP_NEG_OFFSET}) {
+                    # armasm64 in VS < 15.6 is buggy with ldr x0, =sym+offset where the
                     # offset is a negative value; it does write a negative
                     # offset into the literal pool as it should, but the
                     # negative offset only covers the lower 32 bit of the 64
