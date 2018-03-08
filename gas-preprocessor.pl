@@ -1052,6 +1052,24 @@ sub handle_serialized_line {
                     $line =~ s/#$scale/#$inverted_scale/;
                 }
             }
+
+            # Convert "ld1 {v0.4h-v3.4h}" into "ld1 {v0.4h,v1.4h,v2.4h,v3.4h}"
+            if ($line =~ /(?:ld|st)\d\s+({\s*v(\d+)\.(\d[bhsdBHSD])\s*-\s*v(\d+)\.(\d[bhsdBHSD])\s*})/) {
+                my $regspec = $1;
+                my $reg1 = $2;
+                my $layout1 = $3;
+                my $reg2 = $4;
+                my $layout2 = $5;
+                if ($layout1 eq $layout2) {
+                    my $new_regspec = "{";
+                    foreach my $i ($reg1 .. $reg2) {
+                        $new_regspec .= "," if ($i > $reg1);
+                        $new_regspec .= "v$i.$layout1";
+                    }
+                    $new_regspec .= "}";
+                    $line =~ s/$regspec/$new_regspec/;
+                }
+            }
         }
         # armasm is unable to parse &0x - add spacing
         $line =~ s/&0x/& 0x/g;
