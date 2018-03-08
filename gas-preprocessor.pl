@@ -1120,6 +1120,7 @@ sub handle_serialized_line {
     }
     if ($as_type eq "armasm") {
         $line =~ s/\.global/EXPORT/x;
+        $line =~ s/\.extern/IMPORT/x;
         $line =~ s/\.int/dcd/x;
         $line =~ s/\.long/dcd/x;
         $line =~ s/\.float/dcfs/x;
