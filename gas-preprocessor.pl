@@ -879,7 +879,7 @@ sub handle_serialized_line {
 
 
         # Check branch instructions
-        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?\.?(..)?(\.w)?)\s+(\w+)/) {
+        if ($line =~ /(?:^|\n)\s*(\w+\s*:\s*)?(bl?x?\.?([^\s]{2})?(\.w)?)\s+(\w+)/) {
             my $instr = $2;
             my $cond = $3;
             my $width = $4;
