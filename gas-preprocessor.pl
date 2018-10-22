@@ -1005,7 +1005,7 @@ sub handle_serialized_line {
 
             # Convert e.g. "add x0, x0, w0, uxtw" into "add x0, x0, w0, uxtw #0",
             # or "ldr x0, [x0, w0, uxtw]" into "ldr x0, [x0, w0, uxtw #0]".
-            $line =~ s/(uxtw|sxtw)(\s*\]?\s*)$/\1 #0\2/i;
+            $line =~ s/(uxt[whb]|sxt[whb])(\s*\]?\s*)$/\1 #0\2/i;
 
             # Convert "mov x0, v0.d[0]" into "umov x0, v0.d[0]"
             $line =~ s/\bmov\s+[xw]\d+\s*,\s*v\d+\.[ds]/u$&/i;
