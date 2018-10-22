@@ -383,12 +383,12 @@ sub parse_line {
     return if (parse_if_line($line));
 
     if (scalar(@rept_lines) == 0) {
-        if (/\.macro/) {
+        if ($line =~ /\.macro/) {
             $macro_level++;
             if ($macro_level > 1 && !$current_macro) {
                 die "nested macros but we don't have master macro";
             }
-        } elsif (/\.endm/) {
+        } elsif ($line =~ /\.endm/) {
             $macro_level--;
             if ($macro_level < 0) {
                 die "unmatched .endm";
