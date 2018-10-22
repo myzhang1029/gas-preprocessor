@@ -27,6 +27,7 @@ my $as_type = "apple-gas";
 
 my $fix_unreq = $^O eq "darwin";
 my $force_thumb = 0;
+my $verbose = 0;
 
 my $arm_cond_codes = "eq|ne|cs|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al|hs|lo";
 
@@ -48,6 +49,7 @@ command. Following options are currently supported:
     -force-thumb  - assemble as thumb regardless of the input source
                     (note, this is incomplete and only works for sources
                     it explicitly was tested with)
+    -verbose      - print executed commands
 ";
 
 sub usage() {
@@ -61,6 +63,8 @@ while (@ARGV) {
         $fix_unreq = $1 ne "no-";
     } elsif ($opt eq "-force-thumb") {
         $force_thumb = 1;
+    } elsif ($opt eq "-verbose") {
+        $verbose = 1;
     } elsif ($opt eq "-arch") {
         $arch = shift;
         die "unknown arch: '$arch'\n" if not exists $canonical_arch{$arch};
@@ -90,6 +94,7 @@ if (grep /\.c$/, @gcc_cmd) {
     # pass -v/--version along, used during probing. Matching '-v' might have
     # uninteded results but it doesn't matter much if gas-preprocessor or
     # the compiler fails.
+    print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
     exec(@gcc_cmd);
 } else {
     die "Unrecognized input filetype";
@@ -115,6 +120,7 @@ if ($as_type eq "armasm") {
         $index++;
     }
     if (grep /^-MM$/, @preprocess_c_cmd) {
+        print STDERR join(" ", @preprocess_c_cmd)."\n" if $verbose;
         system(@preprocess_c_cmd) == 0 or die "Error running preprocessor";
         exit 0;
     }
@@ -206,12 +212,14 @@ $comm = ";" if $as_type =~ /armasm/;
 my %ppc_spr = (ctr    => 9,
                vrsave => 256);
 
+print STDERR join(" ", @preprocess_c_cmd)."\n" if $verbose;
 open(INPUT, "-|", @preprocess_c_cmd) || die "Error running preprocessor";
 
 if ($ENV{GASPP_DEBUG}) {
     open(ASMFILE, ">&STDOUT");
 } else {
     if ($as_type ne "armasm") {
+        print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
         open(ASMFILE, "|-", @gcc_cmd) or die "Error running assembler";
     } else {
         open(ASMFILE, ">", $tempfile);
@@ -1192,6 +1200,7 @@ if ($as_type ne "armasm") {
 close(INPUT) or exit 1;
 close(ASMFILE) or exit 1;
 if ($as_type eq "armasm" and ! defined $ENV{GASPP_DEBUG}) {
+    print STDERR join(" ", @gcc_cmd)."\n" if $verbose;
     system(@gcc_cmd) == 0 or die "Error running assembler";
 }
 
