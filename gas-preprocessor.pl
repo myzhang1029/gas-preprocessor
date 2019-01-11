@@ -1160,7 +1160,7 @@ sub handle_serialized_line {
         $line =~ s/\.arm/ARM/x;
         # The alignment in AREA is the power of two, just as .align in gas
         $line =~ s/\.text/AREA |.text|, CODE, READONLY, ALIGN=4, CODEALIGN/;
-        $line =~ s/(\s*)(.*)\.rodata/$1AREA |.rodata|, DATA, READONLY, ALIGN=5/;
+        $line =~ s/(\s*)(.*)\.ro?data/$1AREA |.rdata|, DATA, READONLY, ALIGN=5/;
         $line =~ s/\.data/AREA |.data|, DATA, ALIGN=5/;
     }
     if ($as_type eq "armasm" and $arch eq "arm") {
