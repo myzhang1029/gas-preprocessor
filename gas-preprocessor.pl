@@ -10,8 +10,9 @@ use strict;
 # implements the subset of the gas preprocessor used by x264 and ffmpeg
 # that isn't supported by Apple's gas.
 
+# The "arm64\n" variant is for ffmpeg 2.3.6
 my %canonical_arch = ("aarch64" => "aarch64", "arm64" => "aarch64",
-                      "arm"     => "arm",
+                      "arm64\n" => "aarch64", "arm"   => "arm",
                       "powerpc" => "powerpc", "ppc"   => "powerpc");
 
 my %comments = ("aarch64" => '//',
